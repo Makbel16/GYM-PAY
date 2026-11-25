@@ -12,7 +12,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { colors } from '../../src/theme/colors';
-import { CustomHeader } from '../../src/components/CustomHeader';
+import {
+  GymScreenContainer,
+  HeaderActionPill,
+  HeaderIconCircle,
+} from '../../src/components/CustomHeader';
 import { ConfirmationDialog } from '../../src/components/ConfirmationDialog';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLanguage } from '../../src/context/LanguageContext';
@@ -94,13 +98,25 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <CustomHeader
-        title={t('settingsTitle', 'Settings')}
-        subtitle={admin?.full_name || 'Administrator'}
-        dark={true}
-      />
-
+    <GymScreenContainer
+      title={t('settingsTitle', 'Settings')}
+      subtitle={`${admin?.full_name || 'Administrator'} • ${t('settingsSubtitle', 'Plans, language & backups')}`}
+      icon="settings"
+      sheetBackgroundColor="#F8FAFC"
+      rightAction={
+        <>
+          <HeaderActionPill
+            label={t('plansShort', 'Plans')}
+            icon="pricetags"
+            onPress={() => router.push('/settings/plans' as any)}
+          />
+          <HeaderIconCircle
+            icon="log-out-outline"
+            onPress={() => setShowLogoutDialog(true)}
+          />
+        </>
+      }
+    >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {busy && (
           <View style={styles.busyOverlay}>
@@ -347,15 +363,11 @@ export default function SettingsScreen() {
         onConfirm={handleRestore}
         onCancel={() => setShowRestoreDialog(false)}
       />
-    </View>
+    </GymScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   scrollContent: {
     padding: 16,
     paddingBottom: 40,

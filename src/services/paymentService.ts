@@ -8,6 +8,8 @@ export async function recordPayment(params: {
   amount: number;
   paymentMethod: PaymentMethod;
   paymentDate?: string;
+  startDate?: string;
+  endDate?: string;
   receiptNumber?: string | null;
   notes?: string | null;
   recordedBy: string;
@@ -26,11 +28,15 @@ export async function recordPayment(params: {
   const currentMembership = await getLatestMembership(params.memberId);
   const currentEndDate = currentMembership?.end_date ?? null;
 
-  const { startDate, endDate, isExtended } = calculateRenewalDates(
+  const renewalCalc = calculateRenewalDates(
     currentEndDate,
     plan.duration_days,
     payDate
   );
+
+  const finalStartDate = params.startDate?.trim() || renewalCalc.startDate;
+  const finalEndDate = params.endDate?.trim() || renewalCalc.endDate;
+  const isExtended = params.startDate ? (finalStartDate === currentEndDate) : renewalCalc.isExtended;
 
   let paymentId = 0;
   let membershipId = 0;
@@ -40,7 +46,7 @@ export async function recordPayment(params: {
     const membershipResult = await db.runAsync(
       `INSERT INTO memberships (member_id, plan_id, start_date, end_date, status, created_at)
        VALUES (?, ?, ?, ?, 'active', ?)`,
-      [params.memberId, params.planId, startDate, endDate, now]
+      [params.memberId, params.planId, finalStartDate, finalEndDate, now]
     );
     membershipId = membershipResult.lastInsertRowId;
 
@@ -68,7 +74,7 @@ export async function recordPayment(params: {
        VALUES ('RECORD_PAYMENT', 'payment', ?, ?, ?, ?)`,
       [
         paymentId,
-        `Payment of ${params.amount} ETB recorded for member #${params.memberId} (${plan.plan_name}). Valid from ${startDate} to ${endDate}.`,
+        `Payment of ${params.amount} ETB recorded for member #${params.memberId} (${plan.plan_name}). Valid from ${finalStartDate} to ${finalEndDate}.`,
         params.recordedBy,
         now,
       ]
@@ -78,7 +84,7 @@ export async function recordPayment(params: {
   return {
     paymentId,
     membershipId,
-    newEndDate: endDate,
+    newEndDate: finalEndDate,
     isExtended,
   };
 }

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Clipboard,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -112,6 +113,36 @@ export default function MemberDetailsScreen() {
     .join('')
     .toUpperCase();
 
+  const isPaid = member.status === 'active';
+  const isExpired = member.status === 'expired';
+  const isUnpaid = member.status === 'unpaid';
+
+  const getRemainingDaysLabel = () => {
+    if (member.status === 'inactive') {
+      return t('memberIsInactive', 'Member is Deactivated');
+    }
+    if (isUnpaid || !member.membership_end_date) {
+      return t('zeroDaysRemaining', '0 Days Remaining');
+    }
+    if (isExpired) {
+      return t('zeroDaysExpired', '0 Days Remaining (Expired)');
+    }
+    if (member.days_remaining === 0) {
+      return t('zeroDaysExpiresToday', '0 Days Remaining (Expires Today)');
+    }
+    if (member.days_remaining === 1) {
+      return t('oneDayRemaining', '1 Day Remaining');
+    }
+    return `${member.days_remaining} Days Remaining`;
+  };
+
+  const actionButtonText =
+    isExpired || isUnpaid
+      ? t('activateMembership', 'Activate Membership')
+      : isPaid
+      ? t('renewMembership', 'Renew Membership')
+      : t('recordPayment', 'Record Payment');
+
   return (
     <View style={styles.container}>
       <CustomHeader
@@ -137,12 +168,52 @@ export default function MemberDetailsScreen() {
         {/* Profile Card Header matching Screen 4 */}
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            {member.photo_uri ? (
+              <Image source={{ uri: member.photo_uri }} style={styles.avatarPhoto} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </View>
           <Text style={styles.memberName}>{member.full_name}</Text>
           <Text style={styles.memberCategory}>{categoryLabel}</Text>
           <View style={styles.badgeWrapper}>
             <StatusBadge status={member.status} size="large" />
+          </View>
+
+          {/* Prominent Remaining Days Highlight Banner */}
+          <View
+            style={[
+              styles.remainingDaysBanner,
+              isPaid
+                ? styles.bannerActive
+                : isExpired
+                ? styles.bannerExpired
+                : styles.bannerUnpaid,
+            ]}
+          >
+            <Ionicons
+              name={isPaid ? 'time' : isExpired ? 'alert-circle' : 'card-outline'}
+              size={20}
+              color={
+                isPaid
+                  ? colors.primary
+                  : isExpired
+                  ? colors.statRedIcon
+                  : colors.statOrangeIcon
+              }
+            />
+            <View style={styles.remainingBannerContent}>
+              <Text style={styles.remainingBannerTitle}>
+                {getRemainingDaysLabel()}
+              </Text>
+              <Text style={styles.remainingBannerSub}>
+                {isPaid
+                  ? `${t('validUntil', 'Valid until')} ${member.membership_end_date}`
+                  : isExpired
+                  ? `${t('expiredOn', 'Expired on')} ${member.membership_end_date}`
+                  : 'Pay at bank and verify receipt to activate'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -294,7 +365,10 @@ export default function MemberDetailsScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.recordPaymentBtn}
+            style={[
+              styles.recordPaymentBtn,
+              (isExpired || isUnpaid) && styles.activateBtnGlow,
+            ]}
             onPress={() =>
               router.push({
                 pathname: '/payments/record',
@@ -303,9 +377,13 @@ export default function MemberDetailsScreen() {
             }
             activeOpacity={0.8}
           >
-            <Ionicons name="card" size={18} color="#FFFFFF" />
+            <Ionicons
+              name={isExpired || isUnpaid ? 'flash' : 'refresh'}
+              size={18}
+              color="#FFFFFF"
+            />
             <Text style={styles.recordPaymentBtnText}>
-              {t('recordPayment', 'Record Payment')}
+              {actionButtonText}
             </Text>
           </TouchableOpacity>
         </View>
@@ -407,6 +485,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
     marginBottom: 12,
+    overflow: 'hidden',
+  },
+  avatarPhoto: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     fontSize: 28,
@@ -426,6 +509,49 @@ const styles = StyleSheet.create({
   },
   badgeWrapper: {
     marginTop: 12,
+  },
+  remainingDaysBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    padding: 12,
+    borderRadius: 14,
+    marginTop: 14,
+    borderWidth: 1.2,
+  },
+  bannerActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  bannerExpired: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  bannerUnpaid: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  remainingBannerContent: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  remainingBannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  remainingBannerSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  activateBtnGlow: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
   },
   detailsCard: {
     backgroundColor: '#FFFFFF',

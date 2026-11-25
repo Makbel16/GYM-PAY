@@ -38,6 +38,8 @@ export interface InputFieldProps {
   required?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   dark?: boolean;
+  iconColor?: string;
+  inputContainerStyle?: ViewStyle;
 }
 
 export const InputField = React.forwardRef<InputHandle, InputFieldProps>(
@@ -62,6 +64,8 @@ export const InputField = React.forwardRef<InputHandle, InputFieldProps>(
       required = false,
       autoCapitalize = 'none',
       dark = false,
+      iconColor,
+      inputContainerStyle,
     },
     ref
   ) {
@@ -102,18 +106,19 @@ export const InputField = React.forwardRef<InputHandle, InputFieldProps>(
             error ? styles.inputError : null,
             !editable && (dark ? styles.inputDisabledDark : styles.inputDisabled),
             multiline && styles.inputMultiline,
+            inputContainerStyle,
           ]}
         >
           {icon && (
             <Ionicons
               name={icon}
-              size={18}
+              size={19}
               color={
                 isFocused
                   ? colors.primaryVibrant
                   : dark
                   ? '#94A3B8'
-                  : colors.textMuted
+                  : iconColor ?? colors.textMuted
               }
               style={styles.leftIcon}
             />
@@ -150,9 +155,17 @@ export const InputField = React.forwardRef<InputHandle, InputFieldProps>(
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={18}
-                color={dark ? '#94A3B8' : colors.textMuted}
+                name={
+                  iconColor
+                    ? showPassword
+                      ? 'eye-off'
+                      : 'eye'
+                    : showPassword
+                    ? 'eye-off-outline'
+                    : 'eye-outline'
+                }
+                size={20}
+                color={dark ? '#94A3B8' : iconColor ?? colors.textMuted}
               />
             </TouchableOpacity>
           ) : (

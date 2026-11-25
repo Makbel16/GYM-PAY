@@ -34,6 +34,24 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   );
   const monthly_income = monthRow?.sum_amount ?? 0;
 
+  // Calculate previous month income for growth percentage
+  const now = new Date();
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(
+    prevMonthDate.getMonth() + 1
+  ).padStart(2, '0')}`;
+  const prevMonthRow = await db.getFirstAsync<{ sum_amount: number | null }>(
+    `SELECT SUM(amount) as sum_amount 
+     FROM payments 
+     WHERE payment_date LIKE ? AND status = 'completed'`,
+    [`${prevMonthPrefix}%`]
+  );
+  const prevMonthlyIncome = prevMonthRow?.sum_amount ?? 0;
+  const monthly_growth_percent =
+    prevMonthlyIncome > 0
+      ? Math.round(((monthly_income - prevMonthlyIncome) / prevMonthlyIncome) * 100)
+      : null;
+
   // Get recent 5 payments
   const recent_payments = await getRecentPayments(5);
 
@@ -44,6 +62,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     unpaid_members,
     today_income,
     monthly_income,
+    monthly_growth_percent,
     recent_payments,
   };
 }

@@ -46,6 +46,7 @@ export async function registerMember(params: {
   phone: string;
   studentId?: string;
   gender?: Gender | null;
+  photoUri?: string | null;
   registrationDate?: string;
 }): Promise<Member> {
   const db = await getDatabase();
@@ -56,8 +57,8 @@ export async function registerMember(params: {
   const institutionId = params.category === 'student' ? (params.studentId?.trim() ?? null) : null;
 
   const result = await db.runAsync(
-    `INSERT INTO members (gym_id, full_name, member_type, institution_id, phone, gender, registration_date, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    `INSERT INTO members (gym_id, full_name, member_type, institution_id, phone, gender, photo_uri, registration_date, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [
       gymId,
       params.fullName.trim(),
@@ -65,6 +66,7 @@ export async function registerMember(params: {
       institutionId,
       params.phone.trim(),
       params.gender ?? null,
+      params.photoUri ?? null,
       regDate,
       now,
       now,
@@ -79,6 +81,7 @@ export async function registerMember(params: {
     institution_id: institutionId,
     phone: params.phone.trim(),
     gender: params.gender ?? null,
+    photo_uri: params.photoUri ?? null,
     registration_date: regDate,
     is_active: 1,
     created_at: now,

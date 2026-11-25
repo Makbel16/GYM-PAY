@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS members (
   institution_id TEXT UNIQUE,
   phone TEXT NOT NULL,
   gender TEXT,
+  photo_uri TEXT,
   registration_date TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,

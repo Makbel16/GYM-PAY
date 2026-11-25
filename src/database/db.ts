@@ -19,6 +19,13 @@ export async function initializeDatabase(db: SQLite.SQLiteDatabase): Promise<voi
   // Execute schema tables and indexes
   await db.execAsync(SCHEMA_SQL);
 
+  // Safe migration for existing installations adding member photo support
+  try {
+    await db.execAsync('ALTER TABLE members ADD COLUMN photo_uri TEXT;');
+  } catch {
+    // Column already exists
+  }
+
   // Initialize sequence tracking if not exists
   await db.runAsync(`INSERT OR IGNORE INTO id_sequences (category, last_number) VALUES ('staff', 0);`);
   await db.runAsync(`INSERT OR IGNORE INTO id_sequences (category, last_number) VALUES ('external', 0);`);

@@ -19,11 +19,12 @@ import { PrimaryButton } from '../../src/components/PrimaryButton';
 import { LoadingIndicator } from '../../src/components/LoadingIndicator';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { MemberWithStatus, MembershipPlan, PaymentMethod } from '../../src/types';
-import { getMemberById, getAllMembers } from '../../src/services/memberService';
+import { getAllMembers } from '../../src/services/memberService';
 import {
   calculateRenewalDates,
   getMembershipPlans,
   getTodayString,
+  addDaysToDate,
 } from '../../src/services/membershipService';
 import { recordPayment } from '../../src/services/paymentService';
 import { useAuth } from '../../src/context/AuthContext';
@@ -40,8 +41,10 @@ export default function RecordPaymentScreen() {
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
 
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank');
   const [paymentDate, setPaymentDate] = useState(getTodayString());
+  const [startDate, setStartDate] = useState(getTodayString());
+  const [endDate, setEndDate] = useState('');
   const [receiptNumber, setReceiptNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -56,17 +59,31 @@ export default function RecordPaymentScreen() {
         const allMembers = await getAllMembers();
         setMembers(allMembers);
 
+        let currentM: MemberWithStatus | null = null;
         if (params.memberId) {
           const m = allMembers.find((item) => item.id === Number(params.memberId));
-          if (m) setSelectedMember(m);
+          if (m) {
+            currentM = m;
+            setSelectedMember(m);
+          }
         }
 
         const allPlans = await getMembershipPlans();
         setPlans(allPlans);
 
         if (allPlans.length > 0) {
-          setSelectedPlan(allPlans[0]);
-          setAmount(String(allPlans[0].price));
+          const firstPlan = allPlans[0];
+          setSelectedPlan(firstPlan);
+          setAmount(String(firstPlan.price));
+
+          // Set initial start and end dates
+          const calc = calculateRenewalDates(
+            currentM?.membership_end_date ?? null,
+            firstPlan.duration_days,
+            getTodayString()
+          );
+          setStartDate(calc.startDate);
+          setEndDate(calc.endDate);
         }
       } catch (e) {
         console.error('Initialization error', e);
@@ -77,20 +94,63 @@ export default function RecordPaymentScreen() {
     init();
   }, [params.memberId]);
 
-  // When selected plan changes, update amount
+  // When selected plan changes, update amount and dates
   const handleSelectPlan = (plan: MembershipPlan) => {
     setSelectedPlan(plan);
     setAmount(String(plan.price));
+
+    const calc = calculateRenewalDates(
+      selectedMember?.membership_end_date ?? null,
+      plan.duration_days,
+      paymentDate
+    );
+    setStartDate(calc.startDate);
+    setEndDate(calc.endDate);
   };
 
-  // Calculate projected new expiration date
-  const projected = selectedPlan
-    ? calculateRenewalDates(
+  // When payment date or member changes, re-calculate default dates
+  const handlePaymentDateChange = (newDate: string) => {
+    setPaymentDate(newDate);
+    if (selectedPlan) {
+      const calc = calculateRenewalDates(
         selectedMember?.membership_end_date ?? null,
         selectedPlan.duration_days,
-        paymentDate
-      )
-    : null;
+        newDate
+      );
+      setStartDate(calc.startDate);
+      setEndDate(calc.endDate);
+    }
+  };
+
+  const handleStartDateChange = (newStart: string) => {
+    setStartDate(newStart);
+    if (selectedPlan && newStart.length === 10) {
+      setEndDate(addDaysToDate(newStart, selectedPlan.duration_days));
+    }
+  };
+
+  const isActivation =
+    selectedMember?.status === 'expired' ||
+    selectedMember?.status === 'unpaid' ||
+    !selectedMember?.membership_end_date;
+
+  // Calculate live remaining days from today until proposed end date
+  const calculateLiveRemainingDays = (): number => {
+    if (!endDate || endDate.length !== 10) return 0;
+    try {
+      const today = getTodayString();
+      const [tY, tM, tD] = today.split('-').map(Number);
+      const [eY, eM, eD] = endDate.split('-').map(Number);
+      const tTime = new Date(tY, tM - 1, tD).getTime();
+      const eTime = new Date(eY, eM - 1, eD).getTime();
+      const diff = Math.ceil((eTime - tTime) / (1000 * 60 * 60 * 24));
+      return Math.max(0, isNaN(diff) ? 0 : diff);
+    } catch {
+      return 0;
+    }
+  };
+
+  const liveRemainingDays = calculateLiveRemainingDays();
 
   const handleConfirmPayment = async () => {
     if (!selectedMember) {
@@ -109,6 +169,16 @@ export default function RecordPaymentScreen() {
       return;
     }
 
+    if (!startDate || startDate.length !== 10) {
+      setError('Please enter a valid start date (YYYY-MM-DD)');
+      return;
+    }
+
+    if (!endDate || endDate.length !== 10) {
+      setError('Please enter a valid expiration date (YYYY-MM-DD)');
+      return;
+    }
+
     setSaving(true);
     setError('');
 
@@ -119,15 +189,23 @@ export default function RecordPaymentScreen() {
         amount: numericAmount,
         paymentMethod,
         paymentDate,
+        startDate: startDate.trim(),
+        endDate: endDate.trim(),
         receiptNumber: receiptNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         recordedBy: admin?.username || 'admin',
       });
 
+      const successTitle = isActivation
+        ? t('activateMember', 'Membership Activated!')
+        : t('success', 'Renewal Confirmed!');
+
       Alert.alert(
-        t('success', 'Success'),
-        `${t('paymentSuccess', 'Payment recorded successfully!')}\n` +
+        successTitle,
+        `${isActivation ? 'Membership successfully activated!' : t('paymentSuccess', 'Payment recorded successfully!')}\n\n` +
+          `${t('membershipStartDate', 'Membership Start Date')}: ${startDate}\n` +
           `${t('newExpirationDate', 'New Expiration Date')}: ${result.newEndDate}\n` +
+          `${t('calculatedRemaining', 'Calculated Remaining Days')}: ${liveRemainingDays} Days\n` +
           `(${result.isExtended ? t('renewalExtended', 'Continuous renewal extended') : t('renewalStarted', 'New period started')})`,
         [
           {
@@ -154,18 +232,25 @@ export default function RecordPaymentScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <CustomHeader title={t('recordPaymentTitle', 'Record Payment')} showBack={true} />
+        <CustomHeader
+          title={isActivation ? t('activateMembership', 'Activate Membership') : t('renewMembership', 'Renew Membership')}
+          showBack={true}
+        />
         <LoadingIndicator message={t('loading', 'Loading payment details...')} />
       </View>
     );
   }
 
   const paymentMethods: { key: PaymentMethod; label: string; icon: any }[] = [
-    { key: 'cash', label: t('cash', 'Cash'), icon: 'cash-outline' },
-    { key: 'telebirr', label: t('telebirr', 'Telebirr'), icon: 'phone-portrait-outline' },
     { key: 'bank', label: t('bank', 'Bank Transfer'), icon: 'business-outline' },
+    { key: 'telebirr', label: t('telebirr', 'Telebirr'), icon: 'phone-portrait-outline' },
+    { key: 'cash', label: t('cash', 'Cash'), icon: 'cash-outline' },
     { key: 'other', label: t('otherMethod', 'Other'), icon: 'ellipsis-horizontal-circle-outline' },
   ];
+
+  const pageTitle = isActivation
+    ? t('activateMembership', 'Activate Membership')
+    : t('renewMembership', 'Renew Membership');
 
   return (
     <KeyboardAvoidingView
@@ -173,7 +258,8 @@ export default function RecordPaymentScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <CustomHeader
-        title={t('recordPaymentTitle', 'Record Payment')}
+        title={pageTitle}
+        subtitle={isActivation ? 'Verify Bank Receipt & Activate' : 'Extend Membership'}
         showBack={true}
         dark={true}
       />
@@ -182,7 +268,7 @@ export default function RecordPaymentScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Selected Member Header Card matching Screen 6 */}
+        {/* Selected Member Header Card */}
         {selectedMember ? (
           <View style={styles.memberSummaryCard}>
             <View style={styles.memberAvatar}>
@@ -198,6 +284,14 @@ export default function RecordPaymentScreen() {
             <View style={styles.memberInfo}>
               <Text style={styles.memberName}>{selectedMember.full_name}</Text>
               <Text style={styles.memberGymId}>{selectedMember.gym_id}</Text>
+              <View style={styles.statusRow}>
+                <StatusBadge status={selectedMember.status} size="small" />
+                <Text style={styles.currentRemainingText}>
+                  {selectedMember.status === 'active'
+                    ? `${selectedMember.days_remaining} Days Left`
+                    : '0 Days Remaining'}
+                </Text>
+              </View>
             </View>
             <TouchableOpacity
               onPress={() => setSelectedMember(null)}
@@ -205,17 +299,27 @@ export default function RecordPaymentScreen() {
             >
               <Text style={styles.changeMemberText}>Change</Text>
             </TouchableOpacity>
-            <StatusBadge status={selectedMember.status} size="small" />
           </View>
         ) : (
           <View style={styles.selectMemberCard}>
-            <Text style={styles.cardSectionLabel}>Select Member to Pay</Text>
+            <Text style={styles.cardSectionLabel}>Select Member to Activate / Renew</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberPicker}>
               {members.map((m: MemberWithStatus) => (
                 <TouchableOpacity
                   key={m.id}
                   style={styles.memberPickItem}
-                  onPress={() => setSelectedMember(m)}
+                  onPress={() => {
+                    setSelectedMember(m);
+                    if (selectedPlan) {
+                      const calc = calculateRenewalDates(
+                        m.membership_end_date ?? null,
+                        selectedPlan.duration_days,
+                        paymentDate
+                      );
+                      setStartDate(calc.startDate);
+                      setEndDate(calc.endDate);
+                    }
+                  }}
                 >
                   <Text style={styles.memberPickName}>{m.full_name}</Text>
                   <Text style={styles.memberPickId}>{m.gym_id}</Text>
@@ -225,6 +329,7 @@ export default function RecordPaymentScreen() {
           </View>
         )}
 
+        {/* Error Banner */}
         {error ? (
           <View style={styles.errorBox}>
             <Ionicons name="alert-circle" size={18} color={colors.statRedIcon} />
@@ -312,59 +417,101 @@ export default function RecordPaymentScreen() {
             ))}
           </View>
 
+          {/* Bank Receipt Verification Section */}
+          <View style={styles.receiptSectionBox}>
+            <View style={styles.receiptHeaderRow}>
+              <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+              <Text style={styles.receiptSectionTitle}>
+                {t('bankReceiptVerification', 'Bank Receipt Verification')}
+              </Text>
+            </View>
+            <Text style={styles.receiptHintText}>
+              {t('bankReceiptHint', 'Verify the member bank deposit receipt before activation')}
+            </Text>
+
+            <InputField
+              label={t('bankReceiptNumber', 'Bank Receipt Number')}
+              value={receiptNumber}
+              onChangeText={setReceiptNumber}
+              placeholder={t('bankReceiptPlaceholder', 'e.g. CBE-TX-9843217')}
+              icon="document-text-outline"
+            />
+          </View>
+
           {/* Payment Date */}
           <InputField
             label={t('paymentDate', 'Payment Date')}
             value={paymentDate}
-            onChangeText={setPaymentDate}
+            onChangeText={handlePaymentDateChange}
             placeholder="YYYY-MM-DD"
             icon="calendar-outline"
             required
           />
 
-          {/* Receipt Number (Optional) */}
-          <InputField
-            label={t('receiptNumber', 'Receipt Number (Optional)')}
-            value={receiptNumber}
-            onChangeText={setReceiptNumber}
-            placeholder="e.g. REC-2026-001"
-            icon="receipt-outline"
-          />
+          {/* Set Membership Dates (Rule 7) */}
+          <View style={styles.dateConfigSection}>
+            <Text style={styles.dateConfigHeader}>
+              <Ionicons name="calendar" size={16} color={colors.primary} />{' '}
+              {t('membershipDates', 'Membership Dates')}
+            </Text>
+            <View style={styles.dateInputsRow}>
+              <View style={styles.dateInputCol}>
+                <InputField
+                  label={t('membershipStartDate', 'Membership Start Date')}
+                  value={startDate}
+                  onChangeText={handleStartDateChange}
+                  placeholder="YYYY-MM-DD"
+                  icon="play-outline"
+                  required
+                />
+              </View>
+              <View style={styles.dateInputCol}>
+                <InputField
+                  label={t('membershipEndDate', 'Membership Expiration Date')}
+                  value={endDate}
+                  onChangeText={setEndDate}
+                  placeholder="YYYY-MM-DD"
+                  icon="flag-outline"
+                  required
+                />
+              </View>
+            </View>
+          </View>
 
           {/* Notes (Optional) */}
           <InputField
             label={t('notes', 'Notes (Optional)')}
             value={notes}
             onChangeText={setNotes}
-            placeholder="Additional comments or payment reference"
-            icon="document-text-outline"
+            placeholder="Additional comments or bank teller branch"
+            icon="chatbox-outline"
           />
 
-          {/* Calculated New Expiration Date Banner matching Screen 6 */}
-          {projected && (
-            <View style={styles.previewBox}>
-              <View style={styles.previewIconRing}>
-                <Ionicons name="calendar" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.previewContent}>
-                <Text style={styles.previewLabel}>
-                  {t('newExpirationDate', 'New Expiration Date')}
-                </Text>
-                <Text style={styles.previewValue}>{projected.endDate}</Text>
-                <Text style={styles.previewSubtext}>
-                  {projected.isExtended
-                    ? t('renewalExtended', 'Continuous renewal from current expiry')
-                    : t('renewalStarted', 'New period from payment date')}
-                </Text>
-              </View>
+          {/* Live Calculated Remaining Days Banner */}
+          <View style={styles.liveCalculationCard}>
+            <View style={styles.liveIconRing}>
+              <Ionicons name="time" size={24} color={colors.primary} />
             </View>
-          )}
+            <View style={styles.liveCalcContent}>
+              <Text style={styles.liveCalcTitle}>
+                {t('calculatedRemaining', 'Calculated Remaining Days')}
+              </Text>
+              <Text style={styles.liveCalcMain}>{liveRemainingDays} Days Remaining</Text>
+              <Text style={styles.liveCalcSub}>
+                Valid from {startDate} to {endDate}
+              </Text>
+            </View>
+          </View>
 
           {/* Submit Button */}
           <PrimaryButton
-            title={t('confirmPayment', 'Confirm Payment')}
+            title={
+              isActivation
+                ? t('confirmAndActivate', 'Confirm & Activate Membership')
+                : t('confirmAndRenew', 'Confirm & Renew Membership')
+            }
             onPress={handleConfirmPayment}
-            icon="checkmark-circle"
+            icon={isActivation ? 'flash' : 'checkmark-circle'}
             loading={saving}
             style={styles.submitBtn}
           />
@@ -399,9 +546,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   memberAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(16, 185, 129, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -425,10 +572,21 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  currentRemainingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
   changeMemberBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginRight: 8,
+    marginRight: 4,
   },
   changeMemberText: {
     fontSize: 12,
@@ -460,10 +618,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: 8,
-  },
-  memberPickItemActive: {
-    backgroundColor: colors.primaryUltralight,
-    borderColor: colors.primary,
   },
   memberPickName: {
     fontSize: 13,
@@ -577,45 +731,92 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
-  previewBox: {
+  receiptSectionBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  receiptHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primaryUltralight,
-    borderRadius: 14,
+    gap: 6,
+    marginBottom: 4,
+  },
+  receiptSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  receiptHintText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  dateConfigSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
     padding: 14,
-    borderWidth: 1.2,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  dateConfigHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 12,
+  },
+  dateInputsRow: {
+    gap: 10,
+  },
+  dateInputCol: {
+    flex: 1,
+  },
+  liveCalculationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
     marginBottom: 20,
   },
-  previewIconRing: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  liveIconRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
-  previewContent: {
+  liveCalcContent: {
     flex: 1,
   },
-  previewLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '500',
+  liveCalcTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  previewValue: {
-    fontSize: 17,
+  liveCalcMain: {
+    fontSize: 18,
     fontWeight: '800',
     color: colors.primary,
-    marginTop: 2,
+    marginVertical: 2,
   },
-  previewSubtext: {
-    fontSize: 11,
-    color: colors.primaryDark,
-    marginTop: 2,
+  liveCalcSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   submitBtn: {
-    marginTop: 8,
+    marginTop: 4,
   },
 });

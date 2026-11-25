@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -15,18 +16,35 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { colors } from '../../src/theme/colors';
 import { InputField, InputHandle } from '../../src/components/InputField';
-import { PrimaryButton } from '../../src/components/PrimaryButton';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLanguage } from '../../src/context/LanguageContext';
+
+function GreenLockIcon() {
+  return (
+    <Svg width={38} height={38} viewBox="0 0 36 36">
+      <Path
+        d="M11 15.5V10.8C11 6.95 14.13 3.8 18 3.8C21.87 3.8 25 6.95 25 10.8V15.5"
+        stroke="#05843E"
+        strokeWidth="3.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <Rect x="6" y="14.5" width="24" height="17.5" rx="4.5" fill="#05843E" />
+      <Circle cx="18" cy="22" r="2.1" fill="#FFFFFF" />
+      <Path d="M16.7 23L16.1 27H19.9L19.3 23H16.7Z" fill="#FFFFFF" />
+    </Svg>
+  );
+}
 
 export default function LoginScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { login, hasAdmin } = useAuth();
-  const { language, toggleLanguage } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -38,9 +56,7 @@ export default function LoginScreen() {
   const usernameRef = useRef<InputHandle>(null);
   const passwordRef = useRef<InputHandle>(null);
 
-  // Exact aspect ratio of BG.png is 572 / 1024
-  // We pin top: 0 so the top logo and artwork are 100% visible and never cut off or hidden above
-  const imgAspectRatio = 350/1050;
+  const imgAspectRatio = 350 / 1050;
   const imgWidth = Math.max(screenWidth, screenHeight * imgAspectRatio);
   const imgHeight = Math.max(screenHeight, screenWidth / imgAspectRatio);
   const imgLeft = (screenWidth - imgWidth) / 2;
@@ -72,7 +88,7 @@ export default function LoginScreen() {
     <View style={styles.rootContainer}>
       <StatusBar style="light" />
 
-      {/* Pinned background image: top is strictly 0 so top artwork & logo is NEVER hidden above */}
+      {/* Pinned background image */}
       <Image
         source={require('../../assets/images/BG.png')}
         style={[
@@ -87,7 +103,7 @@ export default function LoginScreen() {
         resizeMode="cover"
       />
 
-      {/* Gradient overlay: 0% opacity at top (crystal clear view of the logo and header art), gently deepening towards bottom for card contrast */}
+      {/* Gradient overlay */}
       <LinearGradient
         colors={['rgba(7, 13, 24, 0.0)', 'rgba(7, 13, 24, 0.20)', 'rgba(7, 13, 24, 0.80)']}
         locations={[0, 0.36, 0.88]}
@@ -110,15 +126,23 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Dedicated top spacer showcasing the top logo & artwork in full glory */}
+          {/* Dedicated top spacer */}
           <View style={{ height: Math.max(screenHeight * 0.32, 140) }} pointerEvents="none" />
 
-          {/* Login Card moved down for proper bottom alignment */}
+          {/* Clean White Login Card matching reference */}
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>{t('loginTitle', 'Administrator Login')}</Text>
-            <Text style={styles.formSubtitle}>
-              {t('loginSubtitle', 'Enter your credentials to access system')}
-            </Text>
+            {/* Header Row: Green Lock Icon + Title & Subtitle */}
+            <View style={styles.cardHeaderRow}>
+              <GreenLockIcon />
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.formTitle}>
+                  {t('gymOwnerLogin', 'Gym Owner Login')}
+                </Text>
+                <Text style={styles.formSubtitle}>
+                  {t('gymOwnerLoginSubtitle', 'Access your gym management')}
+                </Text>
+              </View>
+            </View>
 
             {errorMessage ? (
               <View style={styles.errorBanner}>
@@ -127,65 +151,127 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
+            {/* Username Input */}
             <InputField
               ref={usernameRef}
-              label={t('username', 'Username')}
               value={username}
               onChangeText={(txt) => {
                 setUsername(txt);
                 setErrorMessage('');
               }}
-              placeholder="admin"
-              icon="person-outline"
+              placeholder={t('username', 'Username')}
+              icon="person"
+              iconColor="#0F172A"
               autoCapitalize="none"
-              required
-              dark={true}
               returnKeyType="next"
               onSubmitEditing={() => passwordRef.current?.focus()}
               blurOnSubmit={false}
               style={styles.inputSpacing}
+              inputContainerStyle={styles.inputBox}
             />
 
+            {/* Password Input */}
             <InputField
               ref={passwordRef}
-              label={t('password', 'Password / PIN')}
               value={password}
               onChangeText={(txt) => {
                 setPassword(txt);
                 setErrorMessage('');
               }}
-              placeholder="••••••••"
+              placeholder={t('password', 'Password')}
               secureTextEntry
-              icon="lock-closed-outline"
-              required
-              dark={true}
+              icon="lock-closed"
+              iconColor="#0F172A"
               returnKeyType="done"
               onSubmitEditing={handleLogin}
-              style={styles.inputSpacing}
+              style={styles.passwordSpacing}
+              inputContainerStyle={styles.inputBox}
             />
 
-            <PrimaryButton
-              title={t('loginButton', 'Login')}
-              onPress={handleLogin}
-              icon="log-in-outline"
-              loading={loading}
-              style={styles.loginBtn}
-            />
-
-            {/* Change Language Button */}
+            {/* Full-Width Pill Gradient Login Button with Right Arrow */}
             <TouchableOpacity
-              style={styles.languageBtn}
-              onPress={toggleLanguage}
-              activeOpacity={0.8}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.85}
+              style={styles.loginBtnWrapper}
             >
-              <Ionicons name="globe-outline" size={18} color="#FFFFFF" style={styles.langIcon} />
-              <Text style={styles.languageText}>
-                {t('changeLanguage', 'Change Language')}{' '}
-                <Text style={styles.langHighlight}>
-                  {language === 'en' ? 'አማርኛ' : 'English'}
-                </Text>
-              </Text>
+              <LinearGradient
+                colors={['#0A8442', '#035E2C']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.loginBtnGradient}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Text style={styles.loginBtnText}>
+                      {t('loginButton', 'Login')}
+                    </Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={20}
+                      color="#FFFFFF"
+                      style={styles.loginArrowIcon}
+                    />
+                  </>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
+
+            {/* "or" Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>{t('or', 'or')}</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Side-by-Side Language Pill Selector */}
+            <View style={styles.languageRow}>
+              <TouchableOpacity
+                style={styles.languagePillWrapper}
+                onPress={() => setLanguage('en')}
+                activeOpacity={0.85}
+              >
+                {language === 'en' ? (
+                  <LinearGradient
+                    colors={['#0A8A45', '#046A38']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.languagePillActive}
+                  >
+                    <Ionicons name="globe-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.languagePillTextActive}>English</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.languagePillInactive}>
+                    <Text style={styles.languagePillTextInactive}>English</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.languagePillWrapper}
+                onPress={() => setLanguage('am')}
+                activeOpacity={0.85}
+              >
+                {language === 'am' ? (
+                  <LinearGradient
+                    colors={['#0A8A45', '#046A38']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.languagePillActive}
+                  >
+                    <Ionicons name="globe-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.languagePillTextActive}>አማርኛ</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.languagePillInactive}>
+                    <Text style={styles.languagePillTextInactive}>አማርኛ</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
 
             {!hasAdmin && (
               <TouchableOpacity
@@ -222,86 +308,153 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   formCard: {
-    backgroundColor: 'rgba(18, 30, 49, 0.92)',
-    borderRadius: 22,
-    padding: 20,
-    borderWidth: 1.2,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
     elevation: 10,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  cardHeaderText: {
+    marginLeft: 12,
+    flex: 1,
+  },
   formTitle: {
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    textAlign: 'center',
-    letterSpacing: 0.3,
+    color: '#0F172A',
+    letterSpacing: -0.2,
   },
   formSubtitle: {
     fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 18,
-    textAlign: 'center',
+    fontWeight: '500',
+    color: '#334155',
+    marginTop: 2,
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderColor: '#FECACA',
     borderRadius: 12,
     padding: 10,
     marginBottom: 14,
   },
   errorText: {
-    color: '#FCA5A5',
+    color: colors.statRedIcon,
     fontSize: 13,
+    fontWeight: '600',
     marginLeft: 8,
     flex: 1,
   },
   inputSpacing: {
-    marginBottom: 14,
-  },
-  loginBtn: {
-    marginTop: 4,
     marginBottom: 12,
   },
-  languageBtn: {
+  passwordSpacing: {
+    marginBottom: 16,
+  },
+  inputBox: {
+    borderRadius: 14,
+    borderColor: '#CBD5E1',
+    borderWidth: 1.2,
+    backgroundColor: '#FFFFFF',
+    minHeight: 50,
+  },
+  loginBtnWrapper: {
+    borderRadius: 26,
+    overflow: 'hidden',
+    shadowColor: '#046A38',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  loginBtnGradient: {
+    height: 50,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  loginBtnText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  loginArrowIcon: {
+    position: 'absolute',
+    right: 20,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 14,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#CBD5E1',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  languageRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  languagePillWrapper: {
+    flex: 1,
+  },
+  languagePillActive: {
+    height: 44,
+    borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    gap: 7,
   },
-  langIcon: {
-    marginRight: 8,
-  },
-  languageText: {
+  languagePillTextActive: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
-  langHighlight: {
-    color: colors.primaryVibrant,
+  languagePillInactive: {
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  languagePillTextInactive: {
+    fontSize: 14,
     fontWeight: '700',
+    color: '#0F172A',
   },
   setupPrompt: {
     marginTop: 14,
     alignItems: 'center',
   },
   setupPromptText: {
-    color: '#CBD5E1',
+    color: '#475569',
     fontSize: 13,
   },
   setupPromptLink: {
-    color: colors.primaryVibrant,
+    color: colors.primary,
     fontWeight: '700',
   },
 });

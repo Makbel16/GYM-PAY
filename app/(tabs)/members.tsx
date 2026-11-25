@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,14 @@ import {
   TouchableOpacity,
   RefreshControl,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { colors } from '../../src/theme/colors';
-import { CustomHeader } from '../../src/components/CustomHeader';
+import { GymScreenContainer, HeaderActionPill } from '../../src/components/CustomHeader';
 import { MemberCard } from '../../src/components/MemberCard';
-import { SearchBar } from '../../src/components/SearchBar';
 import { EmptyState } from '../../src/components/EmptyState';
 import { MemberCategory, MembershipStatus, MemberWithStatus } from '../../src/types';
 import { getAllMembers } from '../../src/services/memberService';
@@ -24,7 +24,7 @@ export default function MembersScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ filterStatus?: string }>();
 
-  const [members, setMembers] = useState<MemberWithStatus[]>([]);
+  const [allMembers, setAllMembers] = useState<MemberWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,15 +32,16 @@ export default function MembersScreen() {
   const [selectedStatus, setSelectedStatus] = useState<MembershipStatus | 'all'>(
     (params.filterStatus as MembershipStatus) || 'all'
   );
+  const [sortByName, setSortByName] = useState(false);
 
   const loadMembers = async () => {
     try {
       const data = await getAllMembers({
         category: selectedCategory,
-        status: selectedStatus,
-        searchQuery: searchQuery,
+        status: 'all',
+        searchQuery: searchQuery.trim(),
       });
-      setMembers(data);
+      setAllMembers(data);
     } catch (e) {
       console.error('Failed to load members', e);
     } finally {
@@ -50,8 +51,11 @@ export default function MembersScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (params.filterStatus) {
+        setSelectedStatus(params.filterStatus as MembershipStatus);
+      }
       loadMembers();
-    }, [selectedCategory, selectedStatus, searchQuery])
+    }, [selectedCategory, searchQuery, params.filterStatus])
   );
 
   const onRefresh = async () => {
@@ -60,212 +64,400 @@ export default function MembersScreen() {
     setRefreshing(false);
   };
 
-  const categories: { key: MemberCategory | 'all'; label: string }[] = [
-    { key: 'all', label: t('all', 'All') },
-    { key: 'student', label: t('student', 'Student') },
-    { key: 'staff', label: t('staff', 'Staff') },
-    { key: 'external', label: t('external', 'External') },
-  ];
+  const totalCount = allMembers.length;
+  const activeCount = useMemo(
+    () => allMembers.filter((m) => m.status === 'active').length,
+    [allMembers]
+  );
+  const expiredCount = useMemo(
+    () => allMembers.filter((m) => m.status === 'expired').length,
+    [allMembers]
+  );
+  const unpaidCount = useMemo(
+    () => allMembers.filter((m) => m.status === 'unpaid').length,
+    [allMembers]
+  );
 
-  const statuses: { key: MembershipStatus | 'all'; label: string }[] = [
-    { key: 'all', label: t('all', 'All') },
-    { key: 'active', label: t('active', 'Active') },
-    { key: 'expired', label: t('expired', 'Expired') },
-    { key: 'unpaid', label: t('unpaid', 'Unpaid') },
-    { key: 'inactive', label: 'Inactive' },
+  const filteredMembers = useMemo(() => {
+    const byStatus =
+      selectedStatus === 'all'
+        ? allMembers
+        : allMembers.filter((m) => m.status === selectedStatus);
+    if (!sortByName) return byStatus;
+    return [...byStatus].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  }, [allMembers, selectedStatus, sortByName]);
+
+  const categories: { key: MemberCategory | 'all'; label: string; icon: any }[] = [
+    { key: 'all', label: `${t('all', 'All')} (${totalCount})`, icon: 'people' },
+    { key: 'student', label: t('student', 'Student'), icon: 'school' },
+    { key: 'staff', label: t('staff', 'Staff'), icon: 'briefcase' },
+    { key: 'external', label: t('external', 'External'), icon: 'globe-outline' },
   ];
 
   return (
-    <View style={styles.container}>
-      <CustomHeader
-        title={t('members', 'Gym Members')}
-        subtitle={`${members.length} ${t('totalMembers', 'Members')}`}
-        dark={true}
-        rightAction={
+    <GymScreenContainer
+      title={t('members', 'Members')}
+      subtitle={t('manageMembersSubtitle', 'Manage your gym members easily')}
+      icon="barbell"
+      rightAction={
+        <HeaderActionPill
+          label={t('add', 'Add')}
+          icon="add"
+          onPress={() => router.push('/members/register' as any)}
+        />
+      }
+    >
+      {/* Top 4 Status Summary Filter Cards */}
+        <View style={styles.summaryStrip}>
           <TouchableOpacity
-            style={styles.headerAddBtn}
-            onPress={() => router.push('/members/register' as any)}
+            style={[
+              styles.summaryCardWrapper,
+              selectedStatus === 'all' && styles.summaryCardSelectedBorderDark,
+            ]}
+            onPress={() => setSelectedStatus('all')}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={['#0A7B42', '#022A16']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.summaryCardTotal}
+            >
+              <Ionicons name="people" size={18} color="#86EFAC" style={styles.summaryLeftIcon} />
+              <View>
+                <Text style={styles.summaryCountWhite}>{totalCount}</Text>
+                <Text style={styles.summaryLabelWhite}>{t('total', 'Total')}</Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.summaryCard,
+              { backgroundColor: '#DCFCE7' },
+              selectedStatus === 'active' && styles.summaryCardSelectedGreen,
+            ]}
+            onPress={() => setSelectedStatus(selectedStatus === 'active' ? 'all' : 'active')}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.summaryDotIcon, { backgroundColor: '#16A34A' }]}>
+              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+            </View>
+            <View>
+              <Text style={styles.summaryCountDark}>{activeCount}</Text>
+              <Text style={styles.summaryLabelDark}>{t('active', 'Active')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.summaryCard,
+              { backgroundColor: '#FEF0D5' },
+              selectedStatus === 'expired' && styles.summaryCardSelectedOrange,
+            ]}
+            onPress={() => setSelectedStatus(selectedStatus === 'expired' ? 'all' : 'expired')}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.summaryDotIcon, { backgroundColor: '#F59E0B' }]}>
+              <Ionicons name="time" size={12} color="#FFFFFF" />
+            </View>
+            <View>
+              <Text style={styles.summaryCountDark}>{expiredCount}</Text>
+              <Text style={styles.summaryLabelDark}>{t('expired', 'Expired')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.summaryCard,
+              { backgroundColor: '#FFE2E5' },
+              selectedStatus === 'unpaid' && styles.summaryCardSelectedRed,
+            ]}
+            onPress={() => setSelectedStatus(selectedStatus === 'unpaid' ? 'all' : 'unpaid')}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.summaryDotIcon, { backgroundColor: '#DC2626' }]}>
+              <Ionicons name="ban" size={12} color="#FFFFFF" />
+            </View>
+            <View>
+              <Text style={styles.summaryCountDark}>{unpaidCount}</Text>
+              <Text style={styles.summaryLabelDark}>{t('unpaid', 'Unpaid')}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Search Input Pill + Filter/Sort Icon Button */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchInputBox}>
+            <Ionicons name="search" size={19} color="#0F172A" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInputText}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t('searchIdPhoneName', 'Search by ID, Phone or Name...')}
+              placeholderTextColor="#94A3B8"
+              returnKeyType="search"
+              autoCapitalize="none"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.filterBtn, sortByName && styles.filterBtnActive]}
+            onPress={() => setSortByName((prev) => !prev)}
             activeOpacity={0.8}
           >
-            <Ionicons name="person-add" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        }
-      />
-
-      <View style={styles.topFilterSection}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSearch={loadMembers}
-          showSearchButton={false}
-          placeholder={t('searchMemberPlaceholder', 'Search by name, ID or phone...')}
-        />
-
-        {/* Category Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterPillsContainer}
-        >
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat.key}
-              style={[
-                styles.filterPill,
-                selectedCategory === cat.key && styles.filterPillActive,
-              ]}
-              onPress={() => setSelectedCategory(cat.key)}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  selectedCategory === cat.key && styles.filterPillTextActive,
-                ]}
-              >
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Status Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statusPillsContainer}
-        >
-          {statuses.map((st) => (
-            <TouchableOpacity
-              key={st.key}
-              style={[
-                styles.statusPill,
-                selectedStatus === st.key && styles.statusPillActive,
-              ]}
-              onPress={() => setSelectedStatus(st.key)}
-            >
-              <Text
-                style={[
-                  styles.statusPillText,
-                  selectedStatus === st.key && styles.statusPillTextActive,
-                ]}
-              >
-                {st.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <FlatList
-        data={members}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => <MemberCard member={item} detailed={false} />}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyState
-              icon="people-outline"
-              title={t('noMemberFound', 'No members found')}
-              message={
-                searchQuery
-                  ? 'Try a different search term or clear filters'
-                  : 'Get started by registering gym members'
-              }
-              actionTitle={t('registerMember', 'Register Member')}
-              onAction={() => router.push('/members/register' as any)}
+            <Ionicons
+              name="options"
+              size={20}
+              color={sortByName ? '#FFFFFF' : '#058C42'}
             />
-          ) : undefined
-        }
-      />
-    </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Category Filter Chips */}
+        <View style={styles.categoryBarWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
+            {categories.map((cat) => {
+              const active = selectedCategory === cat.key;
+              return (
+                <TouchableOpacity
+                  key={cat.key}
+                  style={[styles.categoryPill, active && styles.categoryPillActive]}
+                  onPress={() => setSelectedCategory(cat.key)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={cat.icon}
+                    size={14}
+                    color={active ? '#FFFFFF' : '#0F172A'}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.categoryPillText, active && styles.categoryPillTextActive]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Member Cards List */}
+        <FlatList
+          data={filteredMembers}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <MemberCard
+              member={item}
+              detailed={false}
+              onRecordPayment={() =>
+                router.push({
+                  pathname: '/payments/record',
+                  params: { memberId: item.id },
+                } as any)
+              }
+            />
+          )}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#059669"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyState
+                icon="people-outline"
+                title={t('noMemberFound', 'No members found')}
+                message={
+                  searchQuery
+                    ? `No members matching "${searchQuery}". Check the ID or name.`
+                    : 'Get started by registering your gym members'
+                }
+                actionTitle={t('registerMember', 'Register New Member')}
+                onAction={() => router.push('/members/register' as any)}
+              />
+            ) : undefined
+          }
+        />
+    </GymScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  headerAddBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  topFilterSection: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  filterPillsContainer: {
-    paddingVertical: 8,
-    gap: 8,
-  },
-  filterPill: {
+  summaryStrip: {
+    flexDirection: 'row',
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
+    paddingTop: 14,
+    paddingBottom: 10,
+    gap: 7,
+  },
+  summaryCardWrapper: {
+    flex: 1.05,
+    borderRadius: 15,
+    overflow: 'hidden',
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
-  filterPillActive: {
-    backgroundColor: colors.primaryUltralight,
-    borderColor: colors.primary,
+  summaryCardSelectedBorderDark: {
+    borderColor: '#22C55E',
   },
-  filterPillText: {
-    fontSize: 12,
+  summaryCardTotal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    gap: 6,
+  },
+  summaryLeftIcon: {
+    marginRight: 1,
+  },
+  summaryCountWhite: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    lineHeight: 19,
+  },
+  summaryLabelWhite: {
+    fontSize: 10.5,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: '#D1FAE5',
   },
-  filterPillTextActive: {
-    color: colors.primary,
-    fontWeight: '700',
+  summaryCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 15,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
-  statusPillsContainer: {
-    paddingBottom: 4,
+  summaryCardSelectedGreen: {
+    borderColor: '#16A34A',
+  },
+  summaryCardSelectedOrange: {
+    borderColor: '#EA580C',
+  },
+  summaryCardSelectedRed: {
+    borderColor: '#DC2626',
+  },
+  summaryDotIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryCountDark: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#0F172A',
+    lineHeight: 19,
+  },
+  summaryLabelDark: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    marginBottom: 10,
     gap: 8,
   },
-  statusPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 16,
+  searchInputBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    height: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInputText: {
+    flex: 1,
+    fontSize: 13.5,
+    color: '#0F172A',
+    fontWeight: '500',
+  },
+  filterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  statusPillActive: {
-    backgroundColor: colors.navyDark,
-    borderColor: colors.navyDark,
+  filterBtnActive: {
+    backgroundColor: '#045B2B',
+    borderColor: '#045B2B',
   },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary,
+  categoryBarWrapper: {
+    paddingBottom: 8,
   },
-  statusPillTextActive: {
-    color: '#FFFFFF',
+  categoryScroll: {
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  categoryPillActive: {
+    backgroundColor: '#045B2B',
+    borderColor: '#045B2B',
+  },
+  categoryPillText: {
+    fontSize: 12.5,
     fontWeight: '700',
+    color: '#0F172A',
+  },
+  categoryPillTextActive: {
+    color: '#FFFFFF',
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 28,
   },
 });

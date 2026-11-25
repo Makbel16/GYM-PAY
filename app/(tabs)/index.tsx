@@ -6,21 +6,86 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Rect, Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
-import { colors } from '../../src/theme/colors';
-import { CustomHeader } from '../../src/components/CustomHeader';
+import {
+  GymScreenContainer,
+  HeaderActionPill,
+  HeaderIconCircle,
+} from '../../src/components/CustomHeader';
 import { StatCard } from '../../src/components/StatCard';
-import { SearchBar } from '../../src/components/SearchBar';
+import { AdminAvatar } from '../../src/components/AdminAvatar';
 import { DashboardStats } from '../../src/types';
 import { getDashboardStats } from '../../src/services/reportService';
-import { getTodayString } from '../../src/services/membershipService';
+import { useAuth } from '../../src/context/AuthContext';
+
+function MonthlyIncomeMiniIcon() {
+  return (
+    <Svg width={34} height={34} viewBox="0 0 34 34">
+      {/* Stepped ascending bars */}
+      <Rect x="4" y="21" width="4.5" height="9" rx="1.5" fill="#16A34A" />
+      <Rect x="11" y="17" width="4.5" height="13" rx="1.5" fill="#16A34A" />
+      <Rect x="18" y="13" width="4.5" height="17" rx="1.5" fill="#16A34A" />
+      <Rect x="25" y="9" width="4.5" height="21" rx="1.5" fill="#16A34A" />
+      {/* Upward trend line & arrowhead */}
+      <Path
+        d="M3 16L13 10.5L19 12.5L29 4"
+        stroke="#058C42"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path
+        d="M24 3.5H29.5V9"
+        stroke="#058C42"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+function SteppedGrowthChart() {
+  return (
+    <Svg width={86} height={54} viewBox="0 0 86 54">
+      <Defs>
+        <SvgLinearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#22C55E" />
+          <Stop offset="100%" stopColor="#057A39" />
+        </SvgLinearGradient>
+      </Defs>
+      {/* Ascending bars */}
+      <Rect x="4" y="39" width="11" height="13" rx="2.5" fill="#86EFAC" />
+      <Rect x="21" y="31" width="11" height="21" rx="2.5" fill="#4ADE80" />
+      <Rect x="38" y="23" width="11" height="29" rx="2.5" fill="url(#barGrad)" />
+      <Rect x="55" y="15" width="11" height="37" rx="2.5" fill="url(#barGrad)" />
+      <Rect x="72" y="7" width="11" height="45" rx="2.5" fill="#046A38" />
+      {/* Upward arrow tip at top of tallest bar */}
+      <Path
+        d="M71 8.5L77.5 1.5L84 8.5"
+        stroke="#046A38"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { admin } = useAuth();
 
   const [stats, setStats] = useState<DashboardStats>({
     total_members: 0,
@@ -29,18 +94,19 @@ export default function DashboardScreen() {
     unpaid_members: 0,
     today_income: 0,
     monthly_income: 0,
+    monthly_growth_percent: null,
     recent_payments: [],
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadData = async () => {
     try {
       const data = await getDashboardStats();
       setStats(data);
-    } catch (error) {
-      console.error('Failed to load dashboard statistics', error);
+    } catch (e) {
+      console.error('Failed to load dashboard stats', e);
     }
   };
 
@@ -57,6 +123,7 @@ export default function DashboardScreen() {
   };
 
   const handleQuickSearch = () => {
+    Keyboard.dismiss();
     if (searchQuery.trim()) {
       router.push({
         pathname: '/(tabs)/payments',
@@ -67,482 +134,438 @@ export default function DashboardScreen() {
     }
   };
 
-  const formatDateDisplay = (dateStr: string) => {
-    try {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      const date = new Date(y, m - 1, d);
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  const adminDisplayName = admin?.full_name || 'Dawit Belete';
+
+  const growthText =
+    stats.monthly_growth_percent !== null && stats.monthly_growth_percent !== undefined
+      ? `${stats.monthly_growth_percent >= 0 ? '↑ +' : '↓ '}${stats.monthly_growth_percent}%`
+      : `↑ ${t('thisMonth', 'This Month')}`;
 
   return (
-    <View style={styles.container}>
-      <CustomHeader
-        title={t('appName', 'DBU Gym')}
-        subtitle={t('appSubtitle', 'Payment Tracker')}
-        dark={true}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
+    <GymScreenContainer
+      title={t('dashboardTitle', 'Dashboard')}
+      subtitle={`${t('appName', 'DBU Gym')} • ${t('appSubtitle', 'Payment Tracker')}`}
+      icon="barbell"
+      rightAction={
+        <>
+          <HeaderIconCircle
+            icon="notifications"
+            onPress={() => router.push('/payments/history' as any)}
           />
-        }
-      >
-        {/* Title & Subtitle matching Screen 2 */}
-        <View style={styles.titleSection}>
-          <Text style={styles.pageTitle}>{t('dashboardTitle', 'Dashboard')}</Text>
-          <Text style={styles.pageSubtitle}>
-            {t('dashboardSubtitle', 'Overview of Gym Members')}
-          </Text>
-        </View>
-
-        {/* 2x2 Stat Cards Grid */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statsRow}>
-            <StatCard
-              title={t('totalMembers', 'Total Members')}
-              value={stats.total_members}
-              icon="people"
-              variant="green"
-              onPress={() => router.push('/(tabs)/members' as any)}
-            />
-            <StatCard
-              title={t('activeMembers', 'Active Members')}
-              value={stats.active_members}
-              icon="checkmark-circle"
-              variant="blue"
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/members',
-                  params: { filterStatus: 'active' },
-                } as any)
-              }
-            />
-          </View>
-
-          <View style={styles.statsRow}>
-            <StatCard
-              title={t('expired', 'Expired')}
-              value={stats.expired_members}
-              icon="time"
-              variant="orange"
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/members',
-                  params: { filterStatus: 'expired' },
-                } as any)
-              }
-            />
-            <StatCard
-              title={t('unpaid', 'Unpaid')}
-              value={stats.unpaid_members}
-              icon="alert-circle"
-              variant="red"
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/members',
-                  params: { filterStatus: 'unpaid' },
-                } as any)
-              }
-            />
-          </View>
-        </View>
-
-        {/* Today's Summary Card */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <Text style={styles.summaryTitle}>{t('todaysSummary', "Today's Summary")}</Text>
-            <View style={styles.dateBadge}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.dateText}>{formatDateDisplay(getTodayString())}</Text>
-            </View>
-          </View>
-
-          <View style={styles.incomeRow}>
-            <View style={styles.cashIconWrapper}>
-              <Ionicons name="cash" size={28} color={colors.primary} />
-            </View>
-            <View style={styles.incomeTextWrapper}>
-              <Text style={styles.incomeAmount}>
-                {stats.today_income.toLocaleString()} {t('amountEtb', 'ETB')}
-              </Text>
-              <Text style={styles.incomeLabel}>{t('todaysIncome', "Today's Income")}</Text>
-            </View>
-
-            <View style={styles.trendBadge}>
-              <Ionicons name="trending-up" size={16} color={colors.primary} />
-              <Text style={styles.trendText}>Live</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Quick Search Section */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeaderTitle}>{t('quickSearch', 'Quick Search')}</Text>
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSearch={handleQuickSearch}
-            placeholder={t('quickSearchPlaceholder', 'Student ID, Gym ID or phone number')}
-          />
-        </View>
-
-        {/* Action Shortcuts */}
-        <View style={styles.actionShortcuts}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => router.push('/members/register' as any)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.actionIconRing, { backgroundColor: colors.primaryUltralight }]}>
-              <Ionicons name="person-add" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.actionBtnText}>{t('quickRegister', 'Register Member')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtn}
+          <HeaderActionPill
+            label={t('payShort', 'Pay')}
+            icon="add"
             onPress={() => router.push('/payments/record' as any)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.actionIconRing, { backgroundColor: '#EFF6FF' }]}>
-              <Ionicons name="card" size={20} color="#2563EB" />
+          />
+        </>
+      }
+    >
+      <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#059669"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Welcome Back Row: Circular Avatar left + Soft Pill Card right */}
+          <View style={styles.welcomeRow}>
+            <AdminAvatar size={72} />
+            <View style={styles.welcomePillCard}>
+              <Text style={styles.welcomeGreeting}>
+                {t('welcomeBack', 'Welcome Back!')}
+              </Text>
+              <Text style={styles.welcomeAdminName} numberOfLines={1}>
+                {adminDisplayName}
+              </Text>
+              <Text style={styles.welcomeRole}>
+                {t('gymAdministrator', 'Gym Administrator')}
+              </Text>
             </View>
-            <Text style={styles.actionBtnText}>{t('quickPayment', 'Record Payment')}</Text>
-          </TouchableOpacity>
+          </View>
 
+          {/* 2x2 Stat Cards Grid matching reference image */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statsRow}>
+              <StatCard
+                title={t('totalMembers', 'Total Members')}
+                value={stats.total_members}
+                variant="green"
+                onPress={() => router.push('/(tabs)/members' as any)}
+              />
+              <StatCard
+                title={t('activeMembers', 'Active Members')}
+                value={stats.active_members}
+                variant="blue"
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/members',
+                    params: { filterStatus: 'active' },
+                  } as any)
+                }
+              />
+            </View>
+
+            <View style={styles.statsRow}>
+              <StatCard
+                title={t('expired', 'Expired')}
+                value={stats.expired_members}
+                variant="orange"
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/members',
+                    params: { filterStatus: 'expired' },
+                  } as any)
+                }
+              />
+              <StatCard
+                title={t('unpaid', 'Unpaid')}
+                value={stats.unpaid_members}
+                variant="red"
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/members',
+                    params: { filterStatus: 'unpaid' },
+                  } as any)
+                }
+              />
+            </View>
+          </View>
+
+          {/* Monthly Income Banner Card matching reference image */}
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={styles.monthlyIncomeCard}
             onPress={() => router.push('/reports' as any)}
-            activeOpacity={0.8}
+            activeOpacity={0.88}
           >
-            <View style={[styles.actionIconRing, { backgroundColor: '#F5F3FF' }]}>
-              <Ionicons name="bar-chart" size={20} color="#7C3AED" />
+            <View style={styles.incomeLeftIcon}>
+              <MonthlyIncomeMiniIcon />
             </View>
-            <Text style={styles.actionBtnText}>{t('reports', 'Reports')}</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Recent Payments Section */}
-        <View style={styles.recentSection}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.sectionHeaderTitle}>
-              {t('recentPayments', 'Recent Payments')}
+            <View style={styles.incomeCenterText}>
+              <Text style={styles.monthlyIncomeLabel}>
+                {t('monthlyIncome', 'Monthly Income')}
+              </Text>
+              <Text style={styles.monthlyIncomeValue}>
+                {stats.monthly_income.toLocaleString()} {t('amountEtb', 'ETB')}
+              </Text>
+              <View style={styles.trendRow}>
+                <Text
+                  style={[
+                    styles.trendGreenText,
+                    stats.monthly_growth_percent !== null &&
+                    stats.monthly_growth_percent !== undefined &&
+                    stats.monthly_growth_percent < 0
+                      ? styles.trendNegativeText
+                      : null,
+                  ]}
+                >
+                  {growthText}
+                </Text>
+              </View>
+            </View>
+
+            <SteppedGrowthChart />
+          </TouchableOpacity>
+
+          {/* Quick Member Search Section matching reference image */}
+          <View style={styles.searchSection}>
+            <Text style={styles.sectionTitle}>
+              {t('quickMemberSearch', 'Quick Member Search')}
             </Text>
+
+            <View style={styles.searchInputBox}>
+              <Ionicons name="search" size={20} color="#0F172A" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInputText}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onSubmitEditing={handleQuickSearch}
+                placeholder={t('quickSearchPlaceholder', 'Student ID, Gym ID or phone number')}
+                placeholderTextColor="#64748B"
+                returnKeyType="search"
+                autoCapitalize="none"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <TouchableOpacity
-              onPress={() => router.push('/payments/history' as any)}
-              style={styles.viewAllBtn}
+              onPress={handleQuickSearch}
+              activeOpacity={0.85}
+              style={styles.searchButtonWrapper}
             >
-              <Text style={styles.viewAllText}>{t('viewAll', 'View All')}</Text>
-              <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+              <LinearGradient
+                colors={['#0A8040', '#035C2B']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.searchButton}
+              >
+                <Text style={styles.searchButtonText}>{t('searchButton', 'Search')}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
 
-          {stats.recent_payments.length === 0 ? (
-            <View style={styles.emptyRecent}>
-              <Ionicons name="receipt-outline" size={32} color={colors.textMuted} />
-              <Text style={styles.emptyRecentText}>
-                {t('noRecentPayments', 'No recent payments found')}
-              </Text>
-            </View>
-          ) : (
-            stats.recent_payments.map((payment) => (
-              <TouchableOpacity
-                key={payment.id}
-                style={styles.paymentItem}
-                onPress={() =>
-                  router.push({
-                    pathname: '/payments/receipt',
-                    params: { paymentId: payment.id },
-                  } as any)
-                }
-                activeOpacity={0.7}
-              >
-                <View style={styles.paymentLeft}>
-                  <View style={styles.paymentCheckRing}>
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.paymentDetails}>
-                    <Text style={styles.paymentMemberName}>
-                      {payment.member_name || `Member #${payment.member_id}`}
-                    </Text>
-                    <Text style={styles.paymentSubtext}>
-                      {payment.gym_id} • {payment.payment_method.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+          {/* Quick Actions Header with Divider matching reference image */}
+          <View style={styles.actionsDividerHeader}>
+            <Text style={styles.actionsTitleText}>
+              {t('quickActions', 'Quick Actions')}
+            </Text>
+            <View style={styles.dividerLine} />
+            <Text style={styles.plusSymbol}>+</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
-                <View style={styles.paymentRight}>
-                  <Text style={styles.paymentAmount}>
-                    {payment.amount} {t('amountEtb', 'ETB')}
-                  </Text>
-                  <Text style={styles.paymentDate}>{payment.payment_date}</Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-      </ScrollView>
-    </View>
+          {/* 3 Pale-Tint Quick Action Cards in a row matching reference image */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/members/register' as any)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="person-add" size={24} color="#058C42" style={styles.actionCardIcon} />
+              <Text style={styles.actionCardTitle} numberOfLines={2}>
+                {t('quickRegister', 'Register\nMember').replace(' ', '\n')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/payments/record' as any)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="wallet" size={24} color="#058C42" style={styles.actionCardIcon} />
+              <Text style={styles.actionCardTitle} numberOfLines={2}>
+                {t('quickPayment', 'Record\nPayment').replace(' ', '\n')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/reports' as any)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="stats-chart" size={24} color="#065F46" style={styles.actionCardIcon} />
+              <Text style={styles.actionCardTitle} numberOfLines={2}>
+                {t('viewReports', 'View\nReports').replace(' ', '\n')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+    </GymScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingTop: 12,
+    paddingBottom: 24,
   },
-  titleSection: {
-    marginBottom: 16,
-  },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  pageSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  statsGrid: {
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  summaryTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  dateBadge: {
+  welcomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  dateText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  incomeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cashIconWrapper: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: colors.primaryUltralight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  incomeTextWrapper: {
-    flex: 1,
-  },
-  incomeAmount: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  incomeLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryUltralight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
-  },
-  trendText: {
-    fontSize: 11,
-    color: colors.primary,
-    fontWeight: '700',
-    marginLeft: 4,
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  sectionHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    marginHorizontal: 16,
     marginBottom: 12,
   },
-  actionShortcuts: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 8,
-  },
-  actionBtn: {
+  welcomePillCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
+    marginLeft: 14,
+    backgroundColor: '#F3F6FA',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E9EEF5',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03,
     shadowRadius: 4,
     elevation: 1,
   },
-  actionIconRing: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
+  welcomeGreeting: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  welcomeAdminName: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 1,
+    letterSpacing: -0.2,
+  },
+  welcomeRole: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#16A34A',
+    marginTop: 2,
+  },
+  statsGrid: {
+    marginHorizontal: 11,
     marginBottom: 8,
   },
-  actionBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
+  statsRow: {
+    flexDirection: 'row',
   },
-  recentSection: {
-    backgroundColor: '#FFFFFF',
+  monthlyIncomeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F7ED',
     borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginBottom: 14,
   },
-  recentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  viewAllBtn: {
-    flexDirection: 'row',
+  incomeLeftIcon: {
+    marginRight: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  viewAllText: {
-    fontSize: 13,
-    color: colors.primary,
-    fontWeight: '700',
-    marginRight: 4,
-  },
-  emptyRecent: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  emptyRecentText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 8,
-  },
-  paymentItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  paymentLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  incomeCenterText: {
     flex: 1,
   },
-  paymentCheckRing: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
+  monthlyIncomeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  monthlyIncomeValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+    letterSpacing: -0.3,
+  },
+  trendRow: {
+    alignItems: 'flex-end',
+    paddingRight: 8,
+    marginTop: 2,
+  },
+  trendGreenText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  trendNegativeText: {
+    color: '#DC2626',
+  },
+  searchSection: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+    letterSpacing: -0.2,
+  },
+  searchInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: '#DCE3EC',
+    paddingHorizontal: 14,
+    height: 46,
+    marginBottom: 10,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInputText: {
+    flex: 1,
+    fontSize: 13.5,
+    color: '#0F172A',
+    fontWeight: '500',
+  },
+  searchButtonWrapper: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#046A38',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  searchButton: {
+    height: 44,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  actionsDividerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  actionsTitleText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0F172A',
     marginRight: 10,
   },
-  paymentDetails: {
+  dividerLine: {
     flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
   },
-  paymentMemberName: {
-    fontSize: 14,
+  plusSymbol: {
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: '#94A3B8',
+    paddingHorizontal: 8,
   },
-  paymentSubtext: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    gap: 10,
   },
-  paymentRight: {
-    alignItems: 'flex-end',
+  actionCard: {
+    flex: 1,
+    backgroundColor: '#F1F6FA',
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E6EEF5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  paymentAmount: {
-    fontSize: 14,
+  actionCardIcon: {
+    marginBottom: 6,
+  },
+  actionCardTitle: {
+    fontSize: 12.5,
     fontWeight: '700',
-    color: colors.primary,
-  },
-  paymentDate: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
+    color: '#0F172A',
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });

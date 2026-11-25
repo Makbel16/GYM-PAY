@@ -23,6 +23,7 @@ export interface Member {
   institution_id: string | null;
   phone: string;
   gender: Gender | null;
+  photo_uri?: string | null;
   registration_date: string;
   is_active: number; // 1 or 0
   created_at: string;
@@ -91,6 +92,7 @@ export interface DashboardStats {
   unpaid_members: number;
   today_income: number;
   monthly_income: number;
+  monthly_growth_percent?: number | null;
   recent_payments: Payment[];
 }
 
